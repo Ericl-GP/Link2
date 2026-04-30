@@ -335,7 +335,9 @@ function scene:show( event )
     if phase == "did" then
         -- channel = 1 reserva um canal fixo para a música
         -- loops = -1 faz a música repetir para sempre
+		audio.setVolume( 0.4, { channel = 1 } )
         audio.play( backgroundMusic, { channel = 1, loops = -1, fadein = 2000 } )
+		
         
         Runtime:addEventListener( "enterFrame", onEnterFrame )
         Runtime:addEventListener( "key", onKeyEvent )
