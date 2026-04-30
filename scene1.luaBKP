@@ -1,0 +1,395 @@
+------------------------------------------------------------------------
+--
+-- scene1.lua
+--
+------------------------------------------------------------------------
+
+local composer = require( "composer" )
+local scene = composer.newScene()
+local dpad = require( "dpad" )
+
+-- [NOVO] Importa e inicia o motor de física
+local physics = require( "physics" )
+physics.start()
+physics.setGravity( 0, 0 ) -- Jogo top-down não tem gravidade 
+-- physics.setDrawMode( "hybrid" ) -- Descomenta isto para ver as áreas de colisão
+
+local gamePad = dpad.newDPad( 450, "pad.png", 0.8, false )
+
+display.setDefault( "background", 0.18, 0.62, 0.32 )
+
+local screenW = display.contentWidth
+local screenH = display.contentHeight
+local halfW = display.contentWidth * 0.5
+local halfH = display.contentHeight * 0.5
+
+local linkSprite = nil
+local moveSpeed = 200 -- Nova variável de velocidade para a física
+local worldGroup = nil
+local isPaused = false -- Controla a pausa do jogo
+local keysPressed = { w = false, a = false, s = false, d = false } -- Teclas WASD pressionadas
+
+function scene:create( event )
+
+	local sceneGroup = self.view
+
+	-- Inicializamos o worldGroup e o colocamos dentro da cena principal.
+	worldGroup = display.newGroup()
+	sceneGroup:insert( worldGroup )
+
+	------------------------------------------------------------------------
+	-- CRIANDO O CENÁRIO COM COLISÕES
+	------------------------------------------------------------------------
+	
+	local worldWidth = 3000
+	local worldHeight = 3000
+	local spawnMargin = 120
+	local spawnBounds = {
+		minX = halfW - worldWidth * 0.7 + spawnMargin,
+		maxX = halfW + worldWidth * 0.7 - spawnMargin,
+		minY = halfH - worldHeight * 0.7 + spawnMargin,
+		maxY = halfH + worldHeight * 0.7 - spawnMargin,
+	}
+
+	-- 1. Chão Gigante com degradê contínuo
+	
+
+	local ground = display.newRect( worldGroup, halfW, halfH, worldWidth, worldHeight )
+	 -- Cor mais escura para o fundo
+	ground.fill = { type = "gradient", color1 = { 0.18, 0.62, 0.32 }, color2 = { 0.06, 0.24, 0.10 }, direction = "down" }
+	
+	local function getMinSpawnDistance(count)
+		local minDist = 1000
+		local maxDist = 3000
+		local distance = maxDist - count * 3
+		return math.max(minDist, math.min(maxDist, distance))
+	end
+
+	local function findSpawnPosition(existing, radius, bounds, separation)
+		for attempt = 1, 150 do
+			local x = math.random(bounds.minX, bounds.maxX)
+			local y = math.random(bounds.minY, bounds.maxY)
+			local ok = true
+			for _, item in ipairs(existing) do
+				local dx = x - item.x
+				local dy = y - item.y
+				local minDist = item.radius + radius + separation
+				if dx * dx + dy * dy < minDist * minDist then
+					ok = false
+					break
+				end
+			end
+			if ok then
+				return x, y
+			end
+		end
+		return math.random(bounds.minX, bounds.maxX), math.random(bounds.minY, bounds.maxY)
+	end
+
+	local spawnedObjects = {}
+
+	-- 2. Arbustos com Física
+	local bushCount = 100
+	local bushSeparation = getMinSpawnDistance(bushCount)
+	for i = 1, bushCount do
+		local radius = math.random( 20, 60 )
+		local randomX, randomY = findSpawnPosition(spawnedObjects, radius, spawnBounds, bushSeparation)
+
+		local bush = display.newCircle( worldGroup, randomX, randomY, radius ) -- Criamos um círculo para representar o arbusto
+		local greenTone = math.random( 40, 80 ) / 100 -- Tom de verde aleatório para cada arbusto
+		bush:setFillColor( 0.1, greenTone, 0.1 ) -- Cor verde escura para os arbustos
+		
+		-- Adiciona o corpo físico ao arbusto (static)
+		physics.addBody( bush, "static", { radius = radius, bounce = 0 } )  -- Usa o raio real para acertar melhor a hitbox
+		table.insert(spawnedObjects, { x = randomX, y = randomY, radius = radius })
+	end
+
+
+	-- 3 . Objetos
+	-- [NOVO] Criamos 3 tipos de objetos (caixa, placa e pote) usando a mesma imagem, mas com diferentes quadros do sprite sheet.
+	local imageSheet = "Objetos.png"
+	local caixa = graphics.newImageSheet( imageSheet, { width = 63, height = 63, numFrames = 84, border = 0 } )
+	local placa = graphics.newImageSheet( imageSheet, { width = 63, height = 63, numFrames = 84, border = 0 } )
+	local pote = graphics.newImageSheet( imageSheet, { width = 63, height = 63, numFrames = 84, border = 0 } )
+
+	local caixaAnimationSequences =
+	{
+		{ name="idle", sheet=caixa, start=15, count=3, time=800, loopCount=0, loopDirection="bounce" },
+		{ name="delete", sheet=caixa, start=25, count=4, time=500, loopCount=1 },
+	}
+
+	local function onSpriteEvent(event)
+		if event.phase == "ended" and event.target.sequence == "delete" then
+			display.remove(event.target)
+		end
+	end
+
+	local function onCollision(event)
+		if event.phase == "began" then
+			local other = event.other
+			if other.isBox then
+				if other.hasItem then
+					isPaused = true
+					-- Limpa o input atual para parar o personagem durante a notificação
+					keysPressed.w = false
+					keysPressed.a = false
+					keysPressed.s = false
+					keysPressed.d = false
+					gamePad.isMoving = false
+					gamePad.isMovingUp = false
+					gamePad.isMovingDown = false
+					gamePad.isMovingLeft = false
+					gamePad.isMovingRight = false
+					native.showAlert("Item Recebido!", "Você ganhou um item!", {"OK"}, function()
+						other:setSequence("delete")
+						other:play()
+						isPaused = false
+					end)
+				else
+					other:setSequence("delete")
+					other:play()
+				end
+			end
+		end
+	end
+
+	local boxCount = 20
+	local boxSeparation = getMinSpawnDistance(boxCount)
+	for i = 1, boxCount do
+		local objectScale = 4
+		local objectHalfSize = 28 * objectScale -- reduz um pouco para evitar área de colisão maior que o sprite visível
+		local randomX, randomY = findSpawnPosition(spawnedObjects, objectHalfSize, spawnBounds, boxSeparation)
+		local objeto = display.newSprite( worldGroup, caixa, caixaAnimationSequences )
+		objeto.x = randomX
+		objeto.y = randomY
+		objeto.xScale = objectScale
+		objeto.yScale = objectScale
+		objeto:setSequence("idle")
+		objeto:play()
+		objeto.id = i
+		objeto.hasItem = math.random(2) == 1  -- true ou false aleatoriamente
+		objeto.isBox = true
+		objeto:addEventListener("sprite", onSpriteEvent)
+		physics.addBody(objeto, "static", { box = { halfWidth = 0.5 * objectHalfSize, halfHeight = 0.5 * objectHalfSize }, isSensor = true } ) -- Sensor para detectar colisão mais perto do sprite
+		table.insert(spawnedObjects, { x = randomX, y = randomY, radius = objectHalfSize })
+	end
+
+	-- Adiciona listener de colisão ao Link
+	-- Movido para depois de criar o linkSprite
+
+
+	------------------------------------------------------------------------
+	-- CONFIGURANDO O PERSONAGEM
+	------------------------------------------------------------------------
+
+	local linkSpriteSheet = graphics.newImageSheet( "link.png", { width = 118, height = 128, numFrames = 80, border = 1 } )
+
+	local linkAnimationSequences =
+	{
+		{ name="idle_down", sheet=linkSpriteSheet, start=1, count=3, time=800, loopCount=1, loopDirection="bounce" },
+		{ name="idle_left", sheet=linkSpriteSheet, start=11, count=3, time=800, loopCount=1, loopDirection="bounce" },
+		{ name="idle_up", sheet=linkSpriteSheet, start=21, count=1, time=800, loopCount=1, loopDirection="bounce" },
+		{ name="idle_right", sheet=linkSpriteSheet, start=31, count=3, time=800, loopCount=1, loopDirection="bounce" },
+
+		{ name="walk_down", sheet=linkSpriteSheet, start=41, count=10, time=1000, loopCount=0 },
+		{ name="walk_left", sheet=linkSpriteSheet, start=51, count=10, time=1000, loopCount=0 },
+		{ name="walk_up", sheet=linkSpriteSheet, start=61, count=10, time=1000, loopCount=0 },
+		{ name="walk_right", sheet=linkSpriteSheet, start=71, count=10, time=1000, loopCount=0 }
+	}
+	
+	linkSprite = display.newSprite( linkSpriteSheet, linkAnimationSequences )
+	linkSprite.x = halfW
+	linkSprite.y = halfH
+	linkSprite:setSequence( "idle_down" )
+	linkSprite:play()
+
+	linkSprite.walkingDirection = nil
+
+	-- Insere o Link no worldGroup (fica por cima dos arbustos)
+	worldGroup:insert( linkSprite )
+
+	-- [NOVO] Adiciona o corpo físico ao Link (dynamic)
+	physics.addBody( linkSprite, "dynamic", { radius = 30, bounce = 0 } )
+	linkSprite.isFixedRotation = true -- Impede o Link de rodar ao bater
+
+	-- Adiciona listener de colisão ao Link
+	linkSprite:addEventListener("collision", onCollision)
+
+end
+
+
+-- [NOVO] Função para atualizar o movimento do Link a cada frame
+function onEnterFrame( event )
+
+	-- Variáveis locais de velocidade física
+	local vx, vy = 0, 0
+
+	-- Se o jogo está pausado, não atualiza movimento
+	if isPaused then
+		linkSprite:setLinearVelocity(0, 0)
+		return
+	end
+
+    -- Verifica as direções do D-Pad
+	if gamePad.isMoving then
+
+		if gamePad.isMovingUp then
+			vy = -moveSpeed
+			if linkSprite.walkingDirection ~= "up" then
+				linkSprite.walkingDirection = "up"
+				linkSprite:setSequence( "walk_up" )
+				linkSprite:play()
+			end
+		end
+
+		if gamePad.isMovingDown then
+			vy = moveSpeed
+			if linkSprite.walkingDirection ~= "down" then
+				linkSprite.walkingDirection = "down"
+				linkSprite:setSequence( "walk_down" )
+				linkSprite:play()
+			end
+		end
+
+		if gamePad.isMovingLeft then
+			vx = -moveSpeed
+			if linkSprite.walkingDirection ~= "left" then
+				linkSprite.walkingDirection = "left"
+				linkSprite:setSequence( "walk_left" )
+				linkSprite:play()
+			end
+		end
+
+		if gamePad.isMovingRight then
+			vx = moveSpeed
+			if linkSprite.walkingDirection ~= "right" then
+				linkSprite.walkingDirection = "right"
+				linkSprite:setSequence( "walk_right" )
+				linkSprite:play()
+			end
+		end
+
+	else
+		-- Idle (Parado)
+		if linkSprite.walkingDirection ~= nil then
+			if linkSprite.walkingDirection == "up" then
+				linkSprite:setSequence( "idle_up" )
+				linkSprite:play()
+			elseif linkSprite.walkingDirection == "down" then
+				linkSprite:setSequence( "idle_down" )
+				linkSprite:play()
+			elseif linkSprite.walkingDirection == "left" then
+				linkSprite:setSequence( "idle_left" )
+				linkSprite:play()
+			elseif linkSprite.walkingDirection == "right" then
+				linkSprite:setSequence( "idle_right" )
+				linkSprite:play()
+			end
+			linkSprite.walkingDirection = nil
+		end
+	end
+
+	-- Verifica teclas WASD
+	if keysPressed.w then
+		vy = -moveSpeed
+		if linkSprite.walkingDirection ~= "up" then
+			linkSprite.walkingDirection = "up"
+			linkSprite:setSequence( "walk_up" )
+			linkSprite:play()
+		end
+	end
+
+	if keysPressed.s then
+		vy = moveSpeed
+		if linkSprite.walkingDirection ~= "down" then
+			linkSprite.walkingDirection = "down"
+			linkSprite:setSequence( "walk_down" )
+			linkSprite:play()
+		end
+	end
+
+	if keysPressed.a then
+		vx = -moveSpeed
+		if linkSprite.walkingDirection ~= "left" then
+			linkSprite.walkingDirection = "left"
+			linkSprite:setSequence( "walk_left" )
+			linkSprite:play()
+		end
+	end
+
+	if keysPressed.d then
+		vx = moveSpeed
+		if linkSprite.walkingDirection ~= "right" then
+			linkSprite.walkingDirection = "right"
+			linkSprite:setSequence( "walk_right" )
+			linkSprite:play()
+		end
+	end
+
+	-- [NOVO] Aplica o movimento ao corpo físico
+	linkSprite:setLinearVelocity( vx, vy )
+
+	-- LÓGICA DA CÂMARA (Atualiza o mapa consoante a nova posição física do Link)
+	if worldGroup then
+		worldGroup.x = halfW - linkSprite.x
+		worldGroup.y = halfH - linkSprite.y
+	end
+
+end
+
+
+local function onKeyEvent( event )
+	local keyName = event.keyName
+	local phase = event.phase
+
+	if phase == "down" then
+		if keyName == "w" then keysPressed.w = true end
+		if keyName == "a" then keysPressed.a = true end
+		if keyName == "s" then keysPressed.s = true end
+		if keyName == "d" then keysPressed.d = true end
+		if keyName == "up" then gamePad.isMovingUp = true gamePad.isMoving = true end
+		if keyName == "down" then gamePad.isMovingDown = true gamePad.isMoving = true end
+		if keyName == "left" then gamePad.isMovingLeft = true gamePad.isMoving = true end
+		if keyName == "right" then gamePad.isMovingRight = true gamePad.isMoving = true end
+	elseif phase == "up" then
+		if keyName == "w" then keysPressed.w = false end
+		if keyName == "a" then keysPressed.a = false end
+		if keyName == "s" then keysPressed.s = false end
+		if keyName == "d" then keysPressed.d = false end
+		if keyName == "up" then gamePad.isMovingUp = false end
+		if keyName == "down" then gamePad.isMovingDown = false end
+		if keyName == "left" then gamePad.isMovingLeft = false end
+		if keyName == "right" then gamePad.isMovingRight = false end
+		if not (keysPressed.w or keysPressed.a or keysPressed.s or keysPressed.d or gamePad.isMovingUp or gamePad.isMovingDown or gamePad.isMovingLeft or gamePad.isMovingRight) then
+			gamePad.isMoving = false
+		end
+	end
+
+	return false
+end
+
+function scene:show( event )
+	local phase = event.phase
+	if phase == "did" then
+		Runtime:addEventListener( "enterFrame", onEnterFrame )
+		Runtime:addEventListener( "key", onKeyEvent )
+	end
+end
+
+function scene:hide( event )
+	local phase = event.phase
+	if phase == "will" then
+		Runtime:removeEventListener( "enterFrame", onEnterFrame )
+		Runtime:removeEventListener( "key", onKeyEvent )
+	end
+end
+
+------------------------------------------------------------------------
+
+scene:addEventListener( "create", scene )
+scene:addEventListener( "show", scene )
+scene:addEventListener( "hide", scene )
+
+------------------------------------------------------------------------
+
+return scene
