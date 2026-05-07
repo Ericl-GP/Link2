@@ -6,3 +6,7 @@ Sprite: (Michael Jackson) https://www.spriters-resource.com/arcade/mjmoonwalker/
 
 o autor do sprite dos Objetos e o 	Elthen's Pixel Art Shop
 pode ser encontrado o original no site https://elthen.itch.io/pixel-art-destructible-objects
+
+
+Main Character’s Home – Free Top-Down Pixel Art Asset -- Autor desconhecido -- Arvores e casa.
+https://craftpix.net/freebies/main-characters-home-free-top-down-pixel-art-asset/?num=1&count=111&sq=house&pos=11 
