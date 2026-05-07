@@ -4,7 +4,8 @@
 
 local composer = require( "composer" )
 local scene = composer.newScene()
-local dpad = require( "dpad" )
+local dpad = require( "scripts.dpad" )
+local itensColetados = 0 -- Contador de itens coletados
 
 -- Configurações globais do jogo
 local config = {
@@ -36,7 +37,7 @@ physics.start()
 physics.setGravity( 0, 0 ) -- Jogo top-down não tem gravidade
 -- physics.setDrawMode( "hybrid" ) -- Descomenta isto para ver as áreas de colisão
 
-local gamePad = dpad.newDPad( 450, "pad.png", 0.8, false )
+local gamePad = dpad.newDPad( 450, "assets/pad.png", 0.8, false )
 
 display.setDefault( "background", 0.18, 0.62, 0.32 )
 
@@ -134,7 +135,7 @@ function scene:create( event )
 	)
 
 	-- 3. Objetos (caixas)
-	local imageSheet = "Objetos.png"
+	local imageSheet = "assets/Objetos.png"
 	local caixa = graphics.newImageSheet(imageSheet, { width = 63, height = 63, numFrames = 84, border = 0 })
 	local caixaAnimationSequences = {
 		{ name="idle", sheet=caixa, start=15, count=3, time=800, loopCount=0, loopDirection="bounce" },
@@ -157,21 +158,24 @@ function scene:create( event )
 				local randomIdx = math.random( 1, #boxSounds ) -- Sorteia um número entre 1 e o total de sons
             	audio.play( boxSounds[randomIdx] )
 				if other.hasItem then
-					isPaused = true
-					keysPressed.w = false
-					keysPressed.a = false
-					keysPressed.s = false
-					keysPressed.d = false
-					gamePad.isMoving = false
-					gamePad.isMovingUp = false
-					gamePad.isMovingDown = false
-					gamePad.isMovingLeft = false
-					gamePad.isMovingRight = false
-					native.showAlert("Item Recebido!", "Você ganhou um item!", {"OK"}, function()
-						other:setSequence("delete")
-						other:play()
-						isPaused = false
-					end)
+					itensColetados = itensColetados + 1
+					other:setSequence("delete")
+					other:play()
+
+					if itensColetados >= 1 then
+						isPaused = true
+						-- Para o movimento
+						linkSprite:setLinearVelocity(0, 0)
+						gamePad.isMoving = false
+						
+						native.showAlert("Portal Aberto!", "Você encontrou 5 itens! A próxima área foi liberada.", {"Ir para Fase 2"}, function()
+							isPaused = false
+							-- Leva para a Scene 2
+							composer.gotoScene("scripts.scene2", { effect = "crossFade", time = 500 })
+						end)
+					else
+						native.showAlert("Item Recebido!", "Você encontrou um item! Faltam " .. (5 - itensColetados) .. ".", {"OK"})
+					end
 				else
 					other:setSequence("delete")
 					other:play()
@@ -207,8 +211,8 @@ function scene:create( event )
 	-- CONFIGURANDO O PERSONAGEM
 	------------------------------------------------------------------------
 
-	local linkSpriteSheet = graphics.newImageSheet( "michael2_2.png", { width = 55, height = 143, numFrames = 42, border = 0 } )
-	local linkSpriteSheet_IDLE = graphics.newImageSheet( "michael_IDE.png", { width = 55, height = 143, numFrames = 96, border = 0 } )
+	local linkSpriteSheet = graphics.newImageSheet( "assets/michael2_2.png", { width = 55, height = 143, numFrames = 42, border = 0 } )
+	local linkSpriteSheet_IDLE = graphics.newImageSheet( "assets/michael_IDE.png", { width = 55, height = 143, numFrames = 96, border = 0 } )
 	
 	local linkAnimationSequences =
 	{
@@ -229,7 +233,7 @@ function scene:create( event )
 	linkSprite.y = halfH
 	linkSprite.xScale = 1.5
 	linkSprite.yScale = 1.5
-	linkSprite:setSequence( "idle_down" )
+	linkSprite:setSequence( "assets/idle_down" )
 	linkSprite:play()
 
 	linkSprite.walkingDirection = nil
@@ -248,8 +252,10 @@ end
 
 
 -- [NOVO] Função para atualizar o movimento do Link a cada frame
-function onEnterFrame( event )
-
+local function onEnterFrame( event )
+	if not linkSprite or not linkSprite.setLinearVelocity then
+			return
+		end
 	-- Se o jogo está pausado, não atualiza movimento
 	if isPaused then
 		linkSprite:setLinearVelocity(0, 0)
@@ -283,9 +289,9 @@ function onEnterFrame( event )
 	updateMovement()
 
 	-- LÓGICA DA CÂMARA (Atualiza o mapa consoante a nova posição física do Link)
-	if worldGroup then
-		worldGroup.x = halfW - linkSprite.x
-		worldGroup.y = halfH - linkSprite.y
+	if worldGroup and worldGroup.x then
+		worldGroup.x = display.contentWidth * 0.5 - linkSprite.x
+		worldGroup.y = display.contentHeight * 0.5 - linkSprite.y
 	end
 
 end
@@ -334,6 +340,7 @@ function scene:show( event )
 	local phase = event.phase
 	
     if phase == "did" then
+		itensColetados = 0 -- Reseta o contador de itens coletados ao mostrar a cena
         -- channel = 1 reserva um canal fixo para a música
         -- loops = -1 faz a música repetir para sempre
 		audio.setVolume( 0.4, { channel = 1 } )
