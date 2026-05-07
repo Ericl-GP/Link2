@@ -5,7 +5,7 @@ local widget = require( "widget" )
 -- Formatando os créditos com base no Referencias.md
 local creditosTexto = [[
 Desenvolvido por:
-Você!
+Ericles & Danilo!
 
 Áudio:
 OcularNebula (Newgrounds)
@@ -57,6 +57,23 @@ function scene:create( event )
         align = "center"
     } )
 
+    -- Calcula uma posição Y para colocar a imagem logo abaixo do final do texto
+    local posY_daImagem = texto.y + (texto.height / 2) + 150 
+
+    -- Carrega a imagem (como michael2_2.png ou link.png que estão na raiz)
+    -- Os números 150, 150 representam a largura e altura na tela. Ajuste como preferir!
+    local imagemFinal = display.newImageRect( self.rolagemGroup, "assets/michael2_2.png", 150, 150 ) 
+    local imagemFinal1 = display.newImageRect(self.rolagemGroup, "assets/link.png", 150, 150);
+    local imagemFinal2 = display.newImageRect(self.rolagemGroup, "assets/Objetos.png", 150, 150);
+    imagemFinal.x = display.contentCenterX
+    imagemFinal.y = posY_daImagem
+    imagemFinal1.x = display.contentCenterX - 200
+    imagemFinal1.y = posY_daImagem
+    imagemFinal2.x = display.contentCenterX + 200
+    imagemFinal2.y = posY_daImagem
+
+
+
     -- Criando o botão para Voltar ao Menu
     local btnVoltar = widget.newButton(
         {
@@ -93,10 +110,10 @@ function scene:show( event )
         self.rolagemGroup.y = 0
     elseif ( phase == "did" ) then
         -- Quando a cena aparece completamente, iniciamos a "Mágica do Cinema"
-        -- Movemos todo o grupo de textos para cima no Eixo Y (-1000 pixels)
+        -- Movemos todo o grupo de textos para cima no Eixo Y (-1500 pixels)
         transition.to( self.rolagemGroup, { 
-            y = -1000, 
-            time = 12000, -- O tempo em milissegundos (12 segundos) que a rolagem vai durar
+            y = -2000, -- A distância que o texto vai subir (ajuste conforme necessário) 
+            time = 15000, -- O tempo em milissegundos (15 segundos) que a rolagem vai durar
             onComplete = function()
                 -- Opcional: Se quiser que volte pro menu sozinho ao terminar a rolagem
                 -- composer.gotoScene( "menu", { time=500, effect="crossFade" } )
