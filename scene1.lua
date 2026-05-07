@@ -23,6 +23,7 @@ local boxSounds = {
 	audio.loadSound( "Song/michael3.mp3" ),
 	audio.loadSound( "Song/michael4.mp3" ),
 	audio.loadSound( "Song/michael5.mp3" ),
+	audio.loadSound( "Song/michael55.mp3" ),
 
 }
 
