@@ -34,7 +34,7 @@ function scene:create( event )
     background:setFillColor( 0.15, 0.15, 0.15 )
 
     -- Título do Jogo
-    local title = display.newText( sceneGroup, "MEU JOGO DE FASES", display.contentCenterX, display.contentCenterY - 150, native.systemFontBold, 36 )
+    local title = display.newText( sceneGroup, "MICHAEL NA FLORESTA", display.contentCenterX, display.contentCenterY - 150, native.systemFontBold, 36 )
     title:setFillColor( 1, 1, 1 )
 
     -- Botão "Jogar"

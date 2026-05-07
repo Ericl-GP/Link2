@@ -2,13 +2,19 @@ local composer = require( "composer" )
 local scene = composer.newScene()
 local widget = require( "widget" )
 
+local backgroundMusic = audio.loadStream( "Song/SEGA-Michael-Jacksons.mp3" )
+audio.setVolume( 0.4, { channel = 1 } )
+audio.play( backgroundMusic, { channel = 1, loops = -1, fadein = 2000 } )
 -- Formatando os créditos com base no Referencias.md
 local creditosTexto = [[
 Desenvolvido por:
 Ericles & Danilo!
 
-Áudio:
+Áudio in game:
 OcularNebula (Newgrounds)
+
+Background Music: SEGA - Michael Jackson's Moonwalker (Arcade Version)
+Digimaks - Newgrounds
 
 Efeitos Sonoros:
 Repositório da Comunidade (MyInstants)
@@ -81,9 +87,10 @@ function scene:create( event )
             onRelease = function()
                 -- Cancela a animação do texto caso o jogador saia antes de terminar
                 transition.cancel( self.rolagemGroup )
-                
+                audio.stop( 1 ) -- Para a música de fundo
                 -- Se o seu menu.lua estiver na raiz do projeto, use "menu", 
                 -- se estiver na pasta scripts, use "scripts.menu"
+                composer.removeScene("scripts.credito");
                 composer.gotoScene( "scripts.menu", { time=500, effect="crossFade" } )
             end,
             shape = "roundedRect",

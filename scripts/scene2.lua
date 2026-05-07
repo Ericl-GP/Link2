@@ -3,6 +3,9 @@ local scene = composer.newScene()
 local dpad = require( "scripts.dpad" )
 local physics = require( "physics" )
 local playerModule = require( "scripts.player" ) 
+local backgroundMusic = audio.loadStream( "Song/SEGA-Michael-Jacksons.mp3" )
+audio.setVolume( 0.4, { channel = 1 } )
+audio.play( backgroundMusic, { channel = 1, loops = -1, fadein = 2000 } )
 
 local config = {
     moveSpeed = 200,
@@ -140,6 +143,7 @@ function scene:create( event )
                     native.showAlert("VITÓRIA!", "Você chegou à cabana em segurança!", {"Menu Principal"}, function()
                         isPaused = false
                         physics.start()
+                        audio.stop( 1 ) -- Para a música de fundo
                         composer.gotoScene("scripts.menu", { effect = "crossFade", time = 500 })
                     end)
                 end
