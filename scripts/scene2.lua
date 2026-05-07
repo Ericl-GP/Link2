@@ -2,8 +2,7 @@ local composer = require( "composer" )
 local scene = composer.newScene()
 local dpad = require( "scripts.dpad" )
 local physics = require( "physics" )
-local playerModule = require( "scripts.player" ) -- IMPORTA O JOGADOR
-composer.removeScene("scripts.scene1")      -- GARANTE QUE A SCENE1 ESTEJA LIMPA PARA QUANDO VOLTAR DO MENU
+local playerModule = require( "scripts.player" ) 
 
 local config = {
     moveSpeed = 200,
@@ -17,7 +16,6 @@ local isPaused = false
 local keysPressed = { w = false, a = false, s = false, d = false }
 local inimigosList = {} 
 
--- Função de Z-Sort para a profundidade
 local function zSort( group )
     local kids = {}
     for i=1, group.numChildren do
@@ -32,6 +30,12 @@ local function zSort( group )
 end
 
 function scene:create( event )
+    math.randomseed(os.time())
+    
+    -- [CORREÇÃO] Limpa a Cena 1 aqui de forma segura
+    composer.removeScene("scripts.scene1")
+
+    isPaused = false
     local sceneGroup = self.view
     physics.start()
     physics.setGravity( 0, 0 )
@@ -45,20 +49,17 @@ function scene:create( event )
     local halfW = display.contentWidth * 0.5
     local halfH = display.contentHeight * 0.5
 
-    -- 1. Chão (Marcado como Background)
     local ground = display.newRect( worldGroup, halfW, halfH, 3000, 3000 )
     ground.fill = { type = "gradient", color1 = { 0.1, 0.4, 0.2 }, color2 = { 0.05, 0.15, 0.08 }, direction = "down" }
     ground.isBackground = true 
 
-    -- 2. A Cabana de Vitória 
     local cabana = display.newImageRect( worldGroup, "assets/PNG/casa.png", 140, 130 )
     cabana.x = halfW
     cabana.y = halfH - 800
     cabana.isCabin = true
     physics.addBody( cabana, "static", { isSensor = true, radius = 65 } )
 
-    -- 3. Árvores Detalhadas
-   local treeOptions = { width = 64, height = 80, numFrames = 117 }
+    local treeOptions = { width = 64, height = 80, numFrames = 117 }
     local treeSheet = graphics.newImageSheet( "assets/Tiled_files/Trees_animation.png", treeOptions )
     
     for i = 1, 30 do
@@ -70,7 +71,6 @@ function scene:create( event )
         physics.addBody( arvore, "static", { box = { halfWidth = 15, halfHeight = 10, x = 0, y = 30 } } )
     end
 
-    -- 4. Inimigos
     local enemyOptions = { width = 118, height = 128, numFrames = 80, border = 1 }
     local enemySheet = graphics.newImageSheet( "assets/link.png", enemyOptions )
     local enemyAnims = {
@@ -86,8 +86,16 @@ function scene:create( event )
 
     for i = 1, 10 do
         local inimigo = display.newSprite( worldGroup, enemySheet, enemyAnims )
-        inimigo.x = halfW + math.random(-800, 800)
-        inimigo.y = halfH + math.random(-800, 800)
+        
+        -- [CORREÇÃO] ZONA SEGURA: Garante que inimigo não nasce em cima do player (halfW, halfH + 500)
+        local ex, ey
+        repeat
+            ex = halfW + math.random(-800, 800)
+            ey = halfH + math.random(-800, 800)
+        until math.abs(ex - halfW) > 150 or math.abs(ey - (halfH + 500)) > 150
+
+        inimigo.x = ex
+        inimigo.y = ey
         inimigo.xScale = 0.8; inimigo.yScale = 0.8
         inimigo.isEnemy = true
         
@@ -103,11 +111,11 @@ function scene:create( event )
         table.insert(inimigosList, inimigo)
     end
 
-    -- 5. Personagem Principal (Usando o Módulo)
     linkSprite = playerModule.new( worldGroup, halfW, halfH + 500 )
 
-    -- Lógica de Colisão da Fase 2
     local function onCollision(event)
+        if isPaused then return end -- [CORREÇÃO] Bloqueia mensagens e eventos em looping
+
         if event.phase == "began" then
             local other = event.other
 
@@ -125,8 +133,6 @@ function scene:create( event )
                     native.showAlert("Capturado!", "Um inimigo te pegou. Voltando ao início...", {"OK"}, function()
                         isPaused = false
                         physics.start()
-                        composer.removeScene("scripts.scene1")
-                        composer.removeScene("scripts.scene2") -- Limpa a cena 2 também
                         composer.gotoScene("scripts.scene1", { effect = "slideRight", time = 500 })
                     end)
 
@@ -134,8 +140,6 @@ function scene:create( event )
                     native.showAlert("VITÓRIA!", "Você chegou à cabana em segurança!", {"Menu Principal"}, function()
                         isPaused = false
                         physics.start()
-                        composer.removeScene("scripts.scene1")
-                        composer.removeScene("scripts.scene2")
                         composer.gotoScene("scripts.menu", { effect = "crossFade", time = 500 })
                     end)
                 end
@@ -146,12 +150,9 @@ function scene:create( event )
     linkSprite:addEventListener("collision", onCollision)
 end
 
--- Função de movimento 
 local function onEnterFrame( event )
-    -- Movimento e Animação usando o Módulo
     playerModule.updateMovement( linkSprite, gamePad, keysPressed, config.moveSpeed, isPaused )
 
-    -- Animação dos Inimigos
     if not isPaused then
         for _, inimigo in ipairs(inimigosList) do
             if inimigo and inimigo.getLinearVelocity then
@@ -173,7 +174,6 @@ local function onEnterFrame( event )
         end
     end
 
-    -- Câmara e Profundidade (Z-Sort)
     if worldGroup and worldGroup.x then
         worldGroup.x = display.contentWidth * 0.5 - linkSprite.x
         worldGroup.y = display.contentHeight * 0.5 - linkSprite.y

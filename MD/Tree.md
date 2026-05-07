@@ -1,11 +1,12 @@
 # File Tree: Link2
 
-**Generated:** 07/05/2026, 11:24:21
+**Generated:** 07/05/2026, 14:02:23
 **Root Path:** `d:\ProjetosVS\Link2`
 
 ```
 ├── 📁 MD
 │   ├── 📝 Scene1.md
+│   ├── 📝 Scene2.md
 │   └── 📝 Tree.md
 ├── 📁 Song
 │   ├── 🎵 958530_Medieval.mp3
@@ -53,6 +54,7 @@
 ├── 📁 scripts
 │   ├── 📄 dpad.lua
 │   ├── 📄 menu.lua
+│   ├── 📄 player.lua
 │   ├── 📄 scene1.lua
 │   ├── 📄 scene1.luaBKP
 │   └── 📄 scene2.lua

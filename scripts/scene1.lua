@@ -6,9 +6,9 @@ local composer = require( "composer" )
 local playerModule = require( "scripts.player" )
 local scene = composer.newScene()
 local dpad = require( "scripts.dpad" )
-local itensColetados = 0 -- Contador de itens coletados
-composer.removeScene("scripts.scene2")
--- Configurações globais do jogo
+
+local itensColetados = 0 
+
 local config = {
     worldWidth = 3000,
     worldHeight = 3000,
@@ -18,7 +18,7 @@ local config = {
     boxCount = 20,
     boxScale = 4
 }
--- Tabela para armazenar os efeitos sonoros da pasta Song
+
 local boxSounds = {
     audio.loadSound( "Song/michael1.mp3" ),
 	audio.loadSound( "Song/michael2.mp3" ),
@@ -26,59 +26,52 @@ local boxSounds = {
 	audio.loadSound( "Song/michael4.mp3" ),
 	audio.loadSound( "Song/michael5.mp3" ),
 	audio.loadSound( "Song/michael55.mp3" ),
-
 }
 
--- Carregar a música de fundo (loadStream é melhor para arquivos longos, economiza RAM)
 local backgroundMusic = audio.loadStream( "Song/958530_Medieval.mp3" )
 
--- [NOVO] Importa e inicia o motor de física
 local physics = require( "physics" )
 physics.start()
-physics.setGravity( 0, 0 ) -- Jogo top-down não tem gravidade
--- physics.setDrawMode( "hybrid" ) -- Descomenta isto para ver as áreas de colisão
+physics.setGravity( 0, 0 )
 
 local gamePad = dpad.newDPad( 450, "assets/pad.png", 0.8, false )
 
 display.setDefault( "background", 0.18, 0.62, 0.32 )
 
-local screenW = display.contentWidth
-local screenH = display.contentHeight
 local halfW = display.contentWidth * 0.5
 local halfH = display.contentHeight * 0.5
 
 local linkSprite = nil
 local worldGroup = nil
-local isPaused = false -- Controla a pausa do jogo
-local keysPressed = { w = false, a = false, s = false, d = false } -- Teclas WASD pressionadas
+local isPaused = false 
+local keysPressed = { w = false, a = false, s = false, d = false }
 
 local function zSort( group )
     local kids = {}
-    -- Pega todos os objetos, exceto os que marcarmos como "isBackground"
     for i=1, group.numChildren do
         if not group[i].isBackground then
             table.insert(kids, group[i])
         end
     end
-    -- Ordena com base no eixo Y (quem está mais abaixo na tela fica à frente)
     table.sort( kids, function(a,b) return (a.y or 0) < (b.y or 0) end )
-    -- Volta a colocá-los no grupo na ordem correta
     for i=1, #kids do
         kids[i]:toFront()
     end
 end
 
 function scene:create( event )
+    -- [CORREÇÃO] Gera aleatoriedade real a cada inicialização
+    math.randomseed(os.time())
+    
+    -- [CORREÇÃO] Limpa a cena 2 apenas quando a cena 1 for carregada
+    composer.removeScene("scripts.scene2")
+
+    itensColetados = 0
+    isPaused = false
 
 	local sceneGroup = self.view
-
-	-- Inicializamos o worldGroup e o colocamos dentro da cena principal.
 	worldGroup = display.newGroup()
 	sceneGroup:insert( worldGroup )
-
-	------------------------------------------------------------------------
-	-- CONFIGURAÇÃO DO MUNDO E SPAWN
-	------------------------------------------------------------------------
 
 	local spawnBounds = {
 		minX = halfW - config.worldWidth * 0.7 + config.spawnMargin,
@@ -87,42 +80,41 @@ function scene:create( event )
 		maxY = halfH + config.worldHeight * 0.7 - config.spawnMargin,
 	}
 
-	-- Função auxiliar para calcular distância mínima baseada na quantidade
 	local function getMinSpawnDistance(count)
-		-- Reduzido para valores realistas para evitar loop infinito
-		if count <= 50 then
-			return 150
-		elseif count <= 100 then
-			return 100
-		else
-			return 50
-		end
+		if count <= 50 then return 150
+		elseif count <= 100 then return 100
+		else return 50 end
 	end
 
-	-- Função auxiliar para encontrar posição sem overlap
 	local function findSpawnPosition(existing, radius, bounds, separation)
 		for attempt = 1, 500 do
 			local x = math.random(bounds.minX, bounds.maxX)
 			local y = math.random(bounds.minY, bounds.maxY)
 			local ok = true
-			for _, item in ipairs(existing) do
-				local dx = x - item.x
-				local dy = y - item.y
-				local minDist = item.radius + radius + separation
-				if dx * dx + dy * dy < minDist * minDist then
-					ok = false
-					break
+            
+            -- [CORREÇÃO] Cria uma ZONA SEGURA ao redor do jogador (halfW, halfH)
+            local distToPlayerX = x - halfW
+            local distToPlayerY = y - halfH
+            if (distToPlayerX * distToPlayerX) + (distToPlayerY * distToPlayerY) < 200 * 200 then
+                ok = false
+            end
+
+			if ok then
+				for _, item in ipairs(existing) do
+					local dx = x - item.x
+					local dy = y - item.y
+					local minDist = item.radius + radius + separation
+					if dx * dx + dy * dy < minDist * minDist then
+						ok = false
+						break
+					end
 				end
 			end
-			if ok then
-				return x, y
-			end
+			if ok then return x, y end
 		end
-		-- Fallback: retorna posição aleatória (pode haver overlap mínimo)
 		return math.random(bounds.minX, bounds.maxX), math.random(bounds.minY, bounds.maxY)
 	end
 
-	-- Função genérica para spawn de objetos
 	local spawnedObjects = {}
 	local function spawnObjects(count, radiusFunc, createFunc, separation)
 		for i = 1, count do
@@ -133,15 +125,13 @@ function scene:create( event )
 		end
 	end
 
-	-- 1. Chão gigante com degradê contínuo
 	local ground = display.newRect( worldGroup, halfW, halfH, config.worldWidth, config.worldHeight )
     ground.fill = { type = "gradient", color1 = { 0.18, 0.62, 0.32 }, color2 = { 0.06, 0.24, 0.10 }, direction = "down" }
-    ground.isBackground = true -- Marca como fundo para não ser considerado no zSort
+    ground.isBackground = true
 
-	-- 2. Arbustos com física
 	local bushSeparation = getMinSpawnDistance(config.bushCount)
 	spawnObjects(config.bushCount,
-		function() return math.random(20, 60) end, -- Raio aleatório
+		function() return math.random(20, 60) end,
 		function(x, y, radius)
 			local bush = display.newCircle(worldGroup, x, y, radius)
 			local greenTone = math.random(40, 80) / 100
@@ -152,7 +142,6 @@ function scene:create( event )
 		bushSeparation
 	)
 
-	-- 3. Objetos (caixas)
 	local imageSheet = "assets/Objetos.png"
 	local caixa = graphics.newImageSheet(imageSheet, { width = 63, height = 63, numFrames = 84, border = 0 })
 	local caixaAnimationSequences = {
@@ -167,10 +156,12 @@ function scene:create( event )
 	end
 
 	local function onCollision(event)
+        -- [CORREÇÃO] Bloqueia alertas duplos
+        if isPaused then return end 
+
 		if event.phase == "began" then
 			local other = event.other
 			if other.isBox then
-
 				local randomIdx = math.random( 1, #boxSounds )
             	audio.play( boxSounds[randomIdx] )
 				
@@ -179,7 +170,6 @@ function scene:create( event )
 					other:setSequence("delete")
 					other:play()
 
-					-- [CORREÇÃO] Pausa o mundo inteiro e limpa as teclas "presas"
 					isPaused = true
 					physics.pause()
 					keysPressed = { w = false, a = false, s = false, d = false }
@@ -188,17 +178,17 @@ function scene:create( event )
 					linkSprite:setSequence("idle_" .. (linkSprite.walkingDirection or "down"))
 					linkSprite:play()
 
-					if itensColetados >= 1 then
+                    -- Se estava testando com 1, mude para 5
+					if itensColetados >= 5 then
 						native.showAlert("Portal Aberto!", "Você encontrou 5 itens! A próxima área foi liberada.", {"Ir para Fase 2"}, function()
 							isPaused = false
-							physics.start() -- Despausa o mundo ao fechar o alerta
-							composer.removeScene("scripts.scene1")
+							physics.start()
 							composer.gotoScene("scripts.scene2", { effect = "crossFade", time = 500 })
 						end)
 					else
 						native.showAlert("Item Recebido!", "Você encontrou um item! Faltam " .. (5 - itensColetados) .. ".", {"OK"}, function()
 							isPaused = false
-							physics.start() -- Despausa o mundo ao fechar o alerta
+							physics.start()
 						end)
 					end
 				else
@@ -212,7 +202,7 @@ function scene:create( event )
 	local boxSeparation = getMinSpawnDistance(config.boxCount)
 	local boxId = 0
 	spawnObjects(config.boxCount,
-		function() return 28 * config.boxScale end, -- Tamanho da caixa
+		function() return 28 * config.boxScale end,
 		function(x, y, radius)
 			boxId = boxId + 1
 			local objeto = display.newSprite(worldGroup, caixa, caixaAnimationSequences)
@@ -232,42 +222,26 @@ function scene:create( event )
 		boxSeparation
 	)
 
-	------------------------------------------------------------------------
-	-- CONFIGURANDO O PERSONAGEM
-	------------------------------------------------------------------------
-
 	linkSprite = playerModule.new( worldGroup, halfW, halfH )
     linkSprite:addEventListener("collision", onCollision)
 end
 
-
--- [NOVO] Função para atualizar o movimento do Link a cada frame
 local function onEnterFrame( event )
-
-	-- 1. Usa o módulo do jogador para o mover e animar:
 	playerModule.updateMovement( linkSprite, gamePad, keysPressed, config.moveSpeed, isPaused )
-
-	-- 2. LÓGICA DA CÂMARA (Atualiza o mapa consoante a nova posição física do Link)
 	if worldGroup and worldGroup.x then
 		worldGroup.x = display.contentWidth * 0.5 - linkSprite.x
 		worldGroup.y = display.contentHeight * 0.5 - linkSprite.y
-        
-        -- 3. CHAMA O Z-SORT PARA ORDENAR A PROFUNDIDADE
         zSort( worldGroup )
 	end
-
 end
 
 local function onKeyEvent( event )
 	local keyName = event.keyName
 	local phase = event.phase
-
-	-- Mapeamento de teclas para simplificar
 	local keyMap = {
 		w = "w", a = "a", s = "s", d = "d",
 		up = "up", down = "down", left = "left", right = "right"
 	}
-
 	if phase == "down" then
 		if keyMap[keyName] then
 			if keyName == "w" or keyName == "a" or keyName == "s" or keyName == "d" then
@@ -284,7 +258,6 @@ local function onKeyEvent( event )
 			else
 				gamePad["isMoving" .. keyName:gsub("^%l", string.upper)] = false
 			end
-			-- Verifica se ainda há movimento
 			local hasMovement = keysPressed.w or keysPressed.a or keysPressed.s or keysPressed.d or
 				gamePad.isMovingUp or gamePad.isMovingDown or gamePad.isMovingLeft or gamePad.isMovingRight
 			if not hasMovement then
@@ -292,43 +265,30 @@ local function onKeyEvent( event )
 			end
 		end
 	end
-
 	return false
 end
 
--- Inicializa/remov listeners de eventos
 function scene:show( event )
 	local phase = event.phase
-	
     if phase == "did" then
-		itensColetados = 0 -- Reseta o contador de itens coletados ao mostrar a cena
-        -- channel = 1 reserva um canal fixo para a música
-        -- loops = -1 faz a música repetir para sempre
 		audio.setVolume( 0.4, { channel = 1 } )
         audio.play( backgroundMusic, { channel = 1, loops = -1, fadein = 2000 } )
-		
-        
         Runtime:addEventListener( "enterFrame", onEnterFrame )
         Runtime:addEventListener( "key", onKeyEvent )
     end
 end
 
-
 function scene:hide( event )
 	local phase = event.phase
 	if phase == "will" then
-		audio.stop( 1 ) -- Para a música de fundo no canal 1
+		audio.stop( 1 )
 		Runtime:removeEventListener( "enterFrame", onEnterFrame )
 		Runtime:removeEventListener( "key", onKeyEvent )
 	end
 end
 
-------------------------------------------------------------------------
-
 scene:addEventListener( "create", scene )
 scene:addEventListener( "show", scene )
 scene:addEventListener( "hide", scene )
-
-------------------------------------------------------------------------
 
 return scene
